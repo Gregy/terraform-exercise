@@ -1,0 +1,15 @@
+services:
+  database:
+    image: postgres:latest
+    environment:
+      POSTGRES_PASSWORD: password
+    deploy:
+      replicas: 1
+    secrets:
+      - postgrespass
+    ports:
+      - "127.0.0.1:15432-16432:5432"
+
+secrets:
+  postgrespass:
+    file: ./postgrespass.secret
