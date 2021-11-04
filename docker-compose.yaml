@@ -2,7 +2,7 @@ services:
   database:
     image: postgres:latest
     environment:
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgrespass
     deploy:
       replicas: 1
     secrets:

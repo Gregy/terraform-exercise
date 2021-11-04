@@ -1,1 +1,6 @@
 postgrespass.secret
+psql.connection.auto.tfvars
+.terraform
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
