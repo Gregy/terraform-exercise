@@ -61,7 +61,7 @@ locals {
   user_roles = {
     for user, info in var.users : user => concat(
       info.database != null ? ["writer_${info.database}"] : [],
-      (info.global_reader == null ? false:info.global_reader) ? [postgresql_role.global_reader_role.name] : []
+      (info.global_reader == null ? false : info.global_reader) ? [postgresql_role.global_reader_role.name] : []
     )
   }
 
@@ -134,7 +134,11 @@ resource "postgresql_grant" "global_reader_db_grant" {
   privileges  = ["CONNECT"]
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.global_reader_role
+    postgresql_role.global_reader_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.revoke_public_schema,
+    postgresql_grant.revoke_public_db,
   ]
 }
 resource "postgresql_grant" "global_reader_schema_grant" {
@@ -146,7 +150,10 @@ resource "postgresql_grant" "global_reader_schema_grant" {
   privileges  = ["USAGE"]
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.global_reader_role
+    postgresql_role.global_reader_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.global_reader_db_grant
   ]
 }
 # for the purposes of this excercise lets assume each db will only have a single schema ("public")
@@ -159,7 +166,10 @@ resource "postgresql_grant" "global_reader_grants_tables" {
   privileges  = ["SELECT"]
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.global_reader_role
+    postgresql_role.global_reader_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.global_reader_schema_grant
   ]
 }
 resource "postgresql_grant" "global_reader_sequence_grant" {
@@ -168,11 +178,14 @@ resource "postgresql_grant" "global_reader_sequence_grant" {
   role        = postgresql_role.global_reader_role.name
   schema      = "public"
   object_type = "sequence"
-  privileges  = ["USAGE","SELECT"]
+  privileges  = ["USAGE", "SELECT"]
 
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.global_reader_role
+    postgresql_role.global_reader_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.global_reader_grants_tables
   ]
 }
 
@@ -191,7 +204,12 @@ resource "postgresql_grant" "db_writer_db_grant" {
   privileges  = ["CONNECT", "TEMPORARY"]
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.db_writer_role
+    postgresql_role.db_writer_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.revoke_public_schema,
+    postgresql_grant.revoke_public_db,
+    postgresql_grant.global_reader_sequence_grant
   ]
 }
 resource "postgresql_grant" "db_writer_schema_grant" {
@@ -203,7 +221,10 @@ resource "postgresql_grant" "db_writer_schema_grant" {
   privileges  = ["CREATE", "USAGE"]
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.db_writer_role
+    postgresql_role.db_writer_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.db_writer_db_grant,
   ]
 }
 resource "postgresql_grant" "db_writer_table_grant" {
@@ -216,7 +237,10 @@ resource "postgresql_grant" "db_writer_table_grant" {
 
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.db_writer_role
+    postgresql_role.db_writer_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.db_writer_schema_grant,
   ]
 }
 resource "postgresql_grant" "db_writer_sequence_grant" {
@@ -225,11 +249,14 @@ resource "postgresql_grant" "db_writer_sequence_grant" {
   role        = postgresql_role.db_writer_role[each.key].name
   schema      = "public"
   object_type = "sequence"
-  privileges  = ["USAGE","SELECT","UPDATE"]
+  privileges  = ["USAGE", "SELECT", "UPDATE"]
 
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.db_writer_role
+    postgresql_role.db_writer_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.db_writer_table_grant,
   ]
 }
 resource "postgresql_grant" "db_writer_function_grant" {
@@ -242,7 +269,10 @@ resource "postgresql_grant" "db_writer_function_grant" {
 
   depends_on = [
     postgresql_database.dbs,
-    postgresql_role.db_writer_role
+    postgresql_role.db_writer_role,
+    # not including this leads to "tuple concurrently updated" errors
+    # postgres doesn't like to do these concurently
+    postgresql_grant.db_writer_sequence_grant,
   ]
 }
 
@@ -284,7 +314,7 @@ resource "postgresql_default_privileges" "default_global_reader_sequence_grant" 
   owner       = each.value.user
   schema      = "public"
   object_type = "sequence"
-  privileges  = ["USAGE","SELECT"]
+  privileges  = ["USAGE", "SELECT"]
   depends_on = [
     postgresql_database.dbs,
     postgresql_role.roles
@@ -311,7 +341,7 @@ resource "postgresql_default_privileges" "default_db_writer_sequence_grant" {
   owner       = postgresql_role.roles[each.value.user].name
   schema      = "public"
   object_type = "sequence"
-  privileges  = ["USAGE","SELECT","UPDATE"]
+  privileges  = ["USAGE", "SELECT", "UPDATE"]
   depends_on = [
     postgresql_database.dbs,
     postgresql_role.roles
@@ -337,5 +367,5 @@ output "users" {
   description = "The same format as the users input but also includes the 'password' field in the users information"
   # lets not print this to cli - we can still get the passwords from the state file
   sensitive = true
-  value = {for user,info in var.users: user => merge(info,{password = postgresql_role.roles[user].password})}
+  value     = { for user, info in var.users : user => merge(info, { password = postgresql_role.roles[user].password }) }
 }
