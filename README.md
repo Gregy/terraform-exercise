@@ -55,3 +55,8 @@ It will also inspect the docker metadata of the running postgres container and g
 ```
 terraform apply
 ```
+
+7. Get the user list and passwords
+```
+terraform output users
+```

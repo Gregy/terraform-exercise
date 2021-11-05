@@ -2,7 +2,8 @@ databases = [
   "firstdb",
   "seconddb",
   "thirddb",
-  "unassigneddb"
+  "unassigneddb",
+  "metrics"
 ]
 
 users = {
@@ -29,5 +30,9 @@ users = {
   }
   user_reader2 = {
     global_reader = true
+  }
+  complicated_user = {
+    global_reader = true
+    database = "metrics"
   }
 }

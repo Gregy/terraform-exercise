@@ -203,3 +203,10 @@ resource "postgresql_default_privileges" "default_db_writer_grant" {
     postgresql_role.roles
   ]
 }
+
+output "users" {
+  description = "The same format as the users input but also includes the 'password' field in the users information"
+  # lets not print this to cli - we can still get the passwords from the state file
+  sensitive = true
+  value = {for user,info in var.users: user => merge(info,{password = postgresql_role.roles[user].password})}
+}
