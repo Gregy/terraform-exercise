@@ -103,12 +103,47 @@ resource "postgresql_database" "dbs" {
   for_each = var.databases
   name     = each.value
 }
+# revoke the default access permissions for everyone postgres creates by default
+resource "postgresql_grant" "revoke_public_db" {
+  for_each    = postgresql_database.dbs
+  database    = each.value.name
+  role        = "public"
+  object_type = "database"
+  privileges  = []
+  depends_on = [
+    postgresql_database.dbs
+  ]
+}
+# revoke the default access permissions for everyone postgres creates by default
+resource "postgresql_grant" "revoke_public_schema" {
+  for_each    = postgresql_database.dbs
+  database    = each.value.name
+  role        = "public"
+  schema      = "public"
+  object_type = "schema"
+  privileges  = []
+  depends_on = [
+    postgresql_database.dbs
+  ]
+}
 resource "postgresql_grant" "global_reader_db_grant" {
   for_each    = postgresql_database.dbs
   database    = each.value.name
   role        = postgresql_role.global_reader_role.name
   object_type = "database"
   privileges  = ["CONNECT"]
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.global_reader_role
+  ]
+}
+resource "postgresql_grant" "global_reader_schema_grant" {
+  for_each    = postgresql_database.dbs
+  database    = each.value.name
+  schema      = "public"
+  role        = postgresql_role.global_reader_role.name
+  object_type = "schema"
+  privileges  = ["USAGE"]
   depends_on = [
     postgresql_database.dbs,
     postgresql_role.global_reader_role
@@ -127,6 +162,21 @@ resource "postgresql_grant" "global_reader_grants_tables" {
     postgresql_role.global_reader_role
   ]
 }
+resource "postgresql_grant" "global_reader_sequence_grant" {
+  for_each    = postgresql_database.dbs
+  database    = each.value.name
+  role        = postgresql_role.global_reader_role.name
+  schema      = "public"
+  object_type = "sequence"
+  privileges  = ["USAGE","SELECT"]
+
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.global_reader_role
+  ]
+}
+
+
 # one writer role per database which will be assigned to individual writer users later
 resource "postgresql_role" "db_writer_role" {
   for_each = postgresql_database.dbs
@@ -138,7 +188,19 @@ resource "postgresql_grant" "db_writer_db_grant" {
   database    = each.value.name
   role        = postgresql_role.db_writer_role[each.key].name
   object_type = "database"
-  privileges  = ["CONNECT"]
+  privileges  = ["CONNECT", "TEMPORARY"]
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.db_writer_role
+  ]
+}
+resource "postgresql_grant" "db_writer_schema_grant" {
+  for_each    = postgresql_database.dbs
+  database    = each.value.name
+  schema      = "public"
+  role        = postgresql_role.db_writer_role[each.key].name
+  object_type = "schema"
+  privileges  = ["CREATE", "USAGE"]
   depends_on = [
     postgresql_database.dbs,
     postgresql_role.db_writer_role
@@ -150,7 +212,34 @@ resource "postgresql_grant" "db_writer_table_grant" {
   role        = postgresql_role.db_writer_role[each.key].name
   schema      = "public"
   object_type = "table"
-  privileges  = ["ALL"]
+  privileges  = ["DELETE", "INSERT", "REFERENCES", "SELECT", "TRIGGER", "TRUNCATE", "UPDATE"]
+
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.db_writer_role
+  ]
+}
+resource "postgresql_grant" "db_writer_sequence_grant" {
+  for_each    = postgresql_database.dbs
+  database    = each.value.name
+  role        = postgresql_role.db_writer_role[each.key].name
+  schema      = "public"
+  object_type = "sequence"
+  privileges  = ["USAGE","SELECT","UPDATE"]
+
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.db_writer_role
+  ]
+}
+resource "postgresql_grant" "db_writer_function_grant" {
+  for_each    = postgresql_database.dbs
+  database    = each.value.name
+  role        = postgresql_role.db_writer_role[each.key].name
+  schema      = "public"
+  object_type = "function"
+  privileges  = ["EXECUTE"]
+
   depends_on = [
     postgresql_database.dbs,
     postgresql_role.db_writer_role
@@ -173,8 +262,9 @@ resource "postgresql_role" "roles" {
   ]
 }
 
-# we have to make sure newly created tables are readable by the global reader role
-resource "postgresql_default_privileges" "default_global_reader_grant" {
+# we have to make sure newly created object permissions are set up correctly
+
+resource "postgresql_default_privileges" "default_global_reader_table_grant" {
   for_each    = local.users_dbs_product
   role        = postgresql_role.global_reader_role.name
   database    = each.value.db
@@ -187,22 +277,61 @@ resource "postgresql_default_privileges" "default_global_reader_grant" {
     postgresql_role.roles
   ]
 }
+resource "postgresql_default_privileges" "default_global_reader_sequence_grant" {
+  for_each    = local.users_dbs_product
+  role        = postgresql_role.global_reader_role.name
+  database    = each.value.db
+  owner       = each.value.user
+  schema      = "public"
+  object_type = "sequence"
+  privileges  = ["USAGE","SELECT"]
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.roles
+  ]
+}
 
-# we have to make sure newly created tables are accesible by the db writer role
-resource "postgresql_default_privileges" "default_db_writer_grant" {
+resource "postgresql_default_privileges" "default_db_writer_table_grant" {
   for_each    = local.users_dbs_product
   role        = postgresql_role.db_writer_role[each.value.db].name
   database    = postgresql_database.dbs[each.value.db].name
   owner       = postgresql_role.roles[each.value.user].name
   schema      = "public"
   object_type = "table"
-  privileges  = ["ALL"]
+  privileges  = ["DELETE", "INSERT", "REFERENCES", "SELECT", "TRIGGER", "TRUNCATE", "UPDATE"]
   depends_on = [
-    postgresql_role.db_writer_role,
     postgresql_database.dbs,
     postgresql_role.roles
   ]
 }
+resource "postgresql_default_privileges" "default_db_writer_sequence_grant" {
+  for_each    = local.users_dbs_product
+  role        = postgresql_role.db_writer_role[each.value.db].name
+  database    = postgresql_database.dbs[each.value.db].name
+  owner       = postgresql_role.roles[each.value.user].name
+  schema      = "public"
+  object_type = "sequence"
+  privileges  = ["USAGE","SELECT","UPDATE"]
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.roles
+  ]
+}
+resource "postgresql_default_privileges" "default_db_writer_function_grant" {
+  for_each    = local.users_dbs_product
+  role        = postgresql_role.db_writer_role[each.value.db].name
+  database    = postgresql_database.dbs[each.value.db].name
+  owner       = postgresql_role.roles[each.value.user].name
+  schema      = "public"
+  object_type = "function"
+  privileges  = ["EXECUTE"]
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.roles
+  ]
+}
+
+
 
 output "users" {
   description = "The same format as the users input but also includes the 'password' field in the users information"
