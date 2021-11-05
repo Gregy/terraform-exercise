@@ -1,0 +1,76 @@
+terraform {
+  # allows for optional user arguments - when to play with experimental features if not now? :-)
+  experiments = [module_variable_optional_attrs]
+  required_providers {
+    postgresql = {
+      source = "cyrilgdn/postgresql"
+    }
+    random = {
+      source = "hashicorp/random"
+    }
+  }
+}
+
+variable "databases" {
+  type        = set(string)
+  description = "A set of database names to provision"
+}
+
+variable "users" {
+  type        = map(object({ database = optional(string), global_reader = optional(bool) }))
+  description = "A map of objects. Key of the map should be the desired username. The database object attribute sets the database name the user should have full access to or be empty if the user shouldn't have full access to any database. The global_reader attribute is a boolean which controls whether the user should be able to read all databases"
+}
+
+locals {
+  postgres-provisioning-modules = {
+    {% for dbname in psql_connections %}
+    {{dbname}} = module.postgres-provisioning-{{dbname}}{% if not loop.last %},{% endif %}
+    {%- endfor %}
+  }
+}
+
+
+variable "psql_connections" {
+  type = map(object({
+    psql_host     = string,
+    psql_port     = number,
+    psql_user     = string,
+    psql_database = string,
+    psql_password = string
+  }))
+}
+
+# I have to use Jinja to bypass https://github.com/hashicorp/terraform/issues/24476
+# I am trying to use as little jinja as possible and do as much as I can using plain terraform
+
+{% for dbname in psql_connections %}
+provider "postgresql" {
+  alias    = "{{dbname}}"
+  host     = var.psql_connections["{{dbname}}"].psql_host
+  port     = var.psql_connections["{{dbname}}"].psql_port
+  database = var.psql_connections["{{dbname}}"].psql_database
+  username = var.psql_connections["{{dbname}}"].psql_user
+  password = var.psql_connections["{{dbname}}"].psql_password
+  
+  # dangerous in real environment, acceptable for this excercise
+  sslmode         = "disable"
+  connect_timeout = 5
+}
+module "postgres-provisioning-{{dbname}}" {
+  source    = "./postgres-provisioning"
+  users     = var.users
+  databases = var.databases
+
+  providers = {
+    postgresql = postgresql.{{dbname}}
+  }
+}
+
+{% endfor %}
+
+output "users" {
+  description = "The same format as the users input but also includes the 'password' field in the users information and is wrapped in a map - one keypair for each server"
+  # lets not print this to cli - we can still get the passwords from the state file
+  sensitive = true
+  value     = { for k, v in local.postgres-provisioning-modules : k=>v.users }
+}

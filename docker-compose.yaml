@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgrespass
     deploy:
-      replicas: 1
+      replicas: ${COMPOSE_DB_SCALE:-1}
     secrets:
       - postgrespass
     ports:

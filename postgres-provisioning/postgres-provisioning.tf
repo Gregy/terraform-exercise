@@ -12,39 +12,6 @@ terraform {
   }
 }
 
-provider "postgresql" {
-  host     = var.psql_host
-  port     = var.psql_port
-  database = var.psql_database
-  username = var.psql_user
-  password = var.psql_password
-  # dangerous in real environment, acceptable for this excercise
-  sslmode         = "disable"
-  connect_timeout = 5
-}
-
-variable "psql_host" {
-  type = string
-}
-
-variable "psql_port" {
-  type = number
-}
-
-variable "psql_user" {
-  type = string
-}
-
-variable "psql_database" {
-  type    = string
-  default = "postgres"
-}
-
-variable "psql_password" {
-  type      = string
-  sensitive = true
-}
-
 variable "users" {
   type        = map(object({ database = optional(string), global_reader = optional(bool) }))
   description = "A map of objects. Key of the map should be the desired username. The database object attribute sets the database name the user should have full access to or be empty if the user shouldn't have full access to any database. The global_reader attribute is a boolean which controls whether the user should be able to read all databases"
@@ -84,8 +51,10 @@ resource "random_password" "passwords" {
 
 # one global reader role which will be assigned to individual global reader users
 resource "postgresql_role" "global_reader_role" {
-  name  = "global_reader_role"
-  login = false
+  name        = "global_reader_role"
+  login       = false
+  roles       = []
+  search_path = []
 }
 
 ##
@@ -192,9 +161,11 @@ resource "postgresql_grant" "global_reader_sequence_grant" {
 
 # one writer role per database which will be assigned to individual writer users later
 resource "postgresql_role" "db_writer_role" {
-  for_each = postgresql_database.dbs
-  name     = "writer_${each.value.name}"
-  login    = false
+  for_each    = postgresql_database.dbs
+  name        = "writer_${each.value.name}"
+  login       = false
+  roles       = []
+  search_path = []
 }
 resource "postgresql_grant" "db_writer_db_grant" {
   for_each    = postgresql_database.dbs
@@ -281,11 +252,12 @@ resource "postgresql_grant" "db_writer_function_grant" {
 ## Setting up users and permissions
 ##
 resource "postgresql_role" "roles" {
-  for_each = var.users
-  name     = each.key
-  login    = true
-  password = random_password.passwords[each.key].result
-  roles    = local.user_roles[each.key]
+  for_each    = var.users
+  name        = each.key
+  login       = true
+  password    = random_password.passwords[each.key].result
+  roles       = local.user_roles[each.key]
+  search_path = ["public"]
   depends_on = [
     postgresql_role.global_reader_role,
     postgresql_role.db_writer_role

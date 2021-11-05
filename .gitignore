@@ -1,6 +1,7 @@
 postgrespass.secret
-psql.connection.auto.tfvars
+psql.connection.auto.tfvars.json
 .terraform
 .terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
+start.tf

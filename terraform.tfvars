@@ -33,6 +33,6 @@ users = {
   }
   complicated_user = {
     global_reader = true
-    database = "metrics"
+    database      = "metrics"
   }
 }
