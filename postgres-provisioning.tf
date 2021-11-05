@@ -88,6 +88,12 @@ resource "postgresql_role" "global_reader_role" {
   login = false
 }
 
+##
+## NOTE: I am using explicit dependencies a lot because I couldn't get implicit dependencies to work
+##       Just accessing an input attribute from a resource I am depending on doesn't do the trick 
+##       For example postgresql_grant.global_reader_db_grant uses postgresql_role.global_reader_role.name
+##       but that is not enough to trigger the dependency. I had to explicitly set it too.
+##
 
 
 ##
@@ -103,6 +109,10 @@ resource "postgresql_grant" "global_reader_db_grant" {
   role        = postgresql_role.global_reader_role.name
   object_type = "database"
   privileges  = ["CONNECT"]
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.global_reader_role
+  ]
 }
 # for the purposes of this excercise lets assume each db will only have a single schema ("public")
 resource "postgresql_grant" "global_reader_grants_tables" {
@@ -112,6 +122,10 @@ resource "postgresql_grant" "global_reader_grants_tables" {
   schema      = "public"
   object_type = "table"
   privileges  = ["SELECT"]
+  depends_on = [
+    postgresql_database.dbs,
+    postgresql_role.global_reader_role
+  ]
 }
 # one writer role per database which will be assigned to individual writer users later
 resource "postgresql_role" "db_writer_role" {
@@ -126,6 +140,7 @@ resource "postgresql_grant" "db_writer_db_grant" {
   object_type = "database"
   privileges  = ["CONNECT"]
   depends_on = [
+    postgresql_database.dbs,
     postgresql_role.db_writer_role
   ]
 }
@@ -137,6 +152,7 @@ resource "postgresql_grant" "db_writer_table_grant" {
   object_type = "table"
   privileges  = ["ALL"]
   depends_on = [
+    postgresql_database.dbs,
     postgresql_role.db_writer_role
   ]
 }
@@ -151,6 +167,10 @@ resource "postgresql_role" "roles" {
   login    = true
   password = random_password.passwords[each.key].result
   roles    = local.user_roles[each.key]
+  depends_on = [
+    postgresql_role.global_reader_role,
+    postgresql_role.db_writer_role
+  ]
 }
 
 # we have to make sure newly created tables are readable by the global reader role
