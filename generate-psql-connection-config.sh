@@ -15,7 +15,7 @@ function getServerConnectionString() {
 EOF
 }
 
-containers=$(docker ps --format "{{.Names}}" | grep "terraform-test_database"| sort -n)
+containers=$(docker ps --format "{{.Names}}" | grep "trfrmtestdatabase"| sort -n)
 
 echo '{"psql_connections":{'
 
