@@ -1,6 +1,6 @@
 # Terraform training assignment
 
-See [assignment](assignment - manage multiple deployments.pdf) for details
+See [assignment](assignment-manage-multiple-deployments.pdf) for details
 
 ### Prerequisites
 
